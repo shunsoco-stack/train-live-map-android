@@ -12,7 +12,7 @@ import argparse
 import math
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageCms, ImageDraw, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageOps, PngImagePlugin
 
 
 ORANGE = (246, 139, 30, 255)
@@ -131,8 +131,9 @@ def save_png(image: Image.Image, path: Path, *, srgb: bool = False) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     options: dict[str, object] = {"optimize": True}
     if srgb:
-        profile = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB"))
-        options["icc_profile"] = profile.tobytes()
+        png_info = PngImagePlugin.PngInfo()
+        png_info.add(b"sRGB", b"\x00")
+        options["pnginfo"] = png_info
     image.save(path, format="PNG", **options)
 
 
