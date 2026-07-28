@@ -1,0 +1,3 @@
+-keepattributes *Annotation*
+-keep class com.shunsoco.trainlivemap.data.model.** { *; }
+-dontwarn javax.annotation.**

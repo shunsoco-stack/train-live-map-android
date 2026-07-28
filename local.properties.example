@@ -1,0 +1,10 @@
+# Copy this file to local.properties. Never commit local.properties.
+sdk.dir=C\:\\Users\\YOUR_NAME\\AppData\\Local\\Android\\Sdk
+
+# Optional. Defaults to the production backend below.
+API_BASE_URL=https://train-live-map.vercel.app
+
+# Release-only AdMob IDs. Leave blank to omit the ad area in release builds.
+# Do not commit real IDs.
+ADMOB_APP_ID=
+ADMOB_BANNER_AD_UNIT_ID=
