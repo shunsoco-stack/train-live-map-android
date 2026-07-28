@@ -470,7 +470,20 @@ AdMob の 2 ID がなくても Debug は Google 公式 test ID で動作し、Re
 
 `dataUpdatedAt` はサーバー生成時刻ではなく、表示中列車データの最新 timestamp です。`generatedAt` だけが新しくても `dataUpdatedAt` が 90 秒超古ければ stale 表示が正しい挙動です。
 
-## 17. 秘密情報インシデント
+## 17. ランチャーアイコン
+
+Web 版 `public/icons/train-live-map-1024.png` を元にした電車前景は `artwork/train-foreground-source.png` にあります。背景色は `app/src/main/res/values/colors.xml` の `launcher_background` (`#F68B1E`) です。
+
+`python tools/generate_launcher_icons.py` は次を一括生成します。
+
+- 108 dp Adaptive / monochrome 前景（xxxhdpi 432×432 px）
+- mdpi〜xxxhdpi の legacy / round legacy PNG
+- `artwork/play-store-icon-512.png`（512×512、RGBA、sRGB、1 MB 未満）
+- `.verification/launcher-mask-preview.png`
+
+Adaptive 前景は中央 66 dp 安全円内へ収め、circle / rounded square / squircle の各マスクで前景のクリップが 0 ピクセルになることをスクリプトで検証します。アイコン更新時は生成コマンド、`lintDebug`、`assembleDebug` を再実行し、マスクプレビューも目視確認してください。
+
+## 18. 秘密情報インシデント
 
 次を Git に入れないでください。
 

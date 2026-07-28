@@ -36,9 +36,24 @@ Android のソースはこのリポジトリだけで管理します。Web 版�
 - TalkBack 用の路線名・方向・行き先・種別・状態・遅延説明と、約 48 dp 以上の操作領域
 - Preferences DataStore による設定と API スナップショットの永続化
 - UMP の同意状態を確認してから表示する AdMob アダプティブバナー
-- 可愛い電車の顔を使った Adaptive Icon
+- Web 版のアイコンを元にした、可愛い電車の Adaptive / themed / legacy icon
 
 列車番号は画面にも TalkBack の読み上げにも表示しません。
+
+## ランチャーアイコン
+
+Web 版 `public/icons/train-live-map-1024.png` の電車を元に、背景 `#F68B1E` のランチャーアイコンを生成しています。Adaptive Icon の 432×432 px（108 dp @ xxxhdpi）前景は、電車の全ピクセルが中央の直径 66 dp 安全円内に入るよう配置しています。
+
+- 前景マスター: `artwork/train-foreground-source.png`
+- Adaptive / themed icon: `app/src/main/res/drawable-xxxhdpi/`
+- legacy / round legacy icon: `app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`
+- Play Store 用 512×512 sRGB PNG: `artwork/play-store-icon-512.png`
+
+Pillow が利用できる環境では次のコマンドで全画像を再生成できます。円、角丸四角、スクワークルごとの前景クリップ数と、66 dp 安全円からはみ出したピクセル数がすべて 0 でなければ失敗します。比較プレビューは Git 対象外の `.verification/launcher-mask-preview.png` に出力されます。
+
+```powershell
+python tools/generate_launcher_icons.py
+```
 
 ## 技術構成
 
