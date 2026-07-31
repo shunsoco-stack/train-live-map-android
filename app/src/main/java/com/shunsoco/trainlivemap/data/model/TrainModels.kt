@@ -97,6 +97,11 @@ data class TrainLocation(
 
 @Serializable
 data class ServiceStatus(
+    /**
+     * Current API responses identify the line explicitly. The default keeps
+     * snapshots written by the earlier single-line API decodable offline.
+     */
+    val lineId: String = "tokaido",
     val lineName: String,
     val severity: ServiceSeverity,
     val message: String,
@@ -130,6 +135,8 @@ data class TrainsApiResponse(
 @Serializable
 data class ServiceStatusApiResponse(
     val serviceStatus: ServiceStatus,
+    /** Current multi-line API field; serviceStatus remains for compatibility. */
+    val serviceStatuses: List<ServiceStatus>? = null,
     val isMock: Boolean,
     val source: ProviderSource,
     val fallback: Boolean,

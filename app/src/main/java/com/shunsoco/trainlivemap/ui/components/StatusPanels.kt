@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shunsoco.trainlivemap.ads.PrivacyOptionsRequirement
+import com.shunsoco.trainlivemap.data.model.DataAccuracy
 import com.shunsoco.trainlivemap.data.model.ProviderSource
 import com.shunsoco.trainlivemap.data.model.RailwaySource
 import com.shunsoco.trainlivemap.data.model.ServiceSeverity
@@ -239,7 +240,8 @@ fun ServiceStatusPanel(
     val (background, symbol) = when (serviceStatus.severity) {
         ServiceSeverity.NORMAL -> Color(0xFF14532D) to "●"
         ServiceSeverity.MINOR -> Color(0xFF854D0E) to "!"
-        ServiceSeverity.MAJOR -> Color(0xFF7F1D1D) to "×"
+        // Major can mean a large inferred delay; do not imply suspension with a cross.
+        ServiceSeverity.MAJOR -> Color(0xFF7F1D1D) to "!"
     }
     Surface(
         modifier = Modifier
@@ -274,6 +276,9 @@ fun ServiceStatusPanel(
                             if (fromCache) append("・保存データ")
                             if (isMock) append("・モック")
                             if (fallback) append("・フォールバック")
+                            if (serviceStatus.dataAccuracy == DataAccuracy.ESTIMATED) {
+                                append("・列車位置から推定・公式情報も確認")
+                            }
                         },
                     color = Color.White.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.labelSmall,

@@ -52,9 +52,19 @@ class ApiJsonDecodingTest {
         assertEquals(ProviderSource.ODPT, decoded.source)
         assertFalse(decoded.fallback)
         assertNull(decoded.notice)
+        assertEquals("tokaido", decoded.serviceStatus.lineId)
         assertEquals("東海道線", decoded.serviceStatus.lineName)
         assertEquals(ServiceSeverity.MINOR, decoded.serviceStatus.severity)
         assertEquals(DataAccuracy.ACTUAL, decoded.serviceStatus.dataAccuracy)
+        assertEquals(listOf("tokaido", "yamanote"), decoded.serviceStatuses?.map { it.lineId })
+    }
+
+    @Test
+    fun `legacy service status cache without line id remains decodable`() {
+        val decoded = json.decodeFromString<ServiceStatusApiResponse>(LEGACY_SERVICE_STATUS_JSON)
+
+        assertEquals("tokaido", decoded.serviceStatus.lineId)
+        assertNull(decoded.serviceStatuses)
     }
 
     @Test
@@ -122,9 +132,44 @@ class ApiJsonDecodingTest {
         val SERVICE_STATUS_JSON = """
             {
               "serviceStatus": {
+                "lineId": "tokaido",
                 "lineName": "東海道線",
                 "severity": "minor",
                 "message": "一部列車に遅れ",
+                "updatedAt": "2026-07-28T20:00:00+09:00",
+                "dataAccuracy": "actual"
+              },
+              "serviceStatuses": [
+                {
+                  "lineId": "tokaido",
+                  "lineName": "東海道線",
+                  "severity": "minor",
+                  "message": "一部列車に遅れ",
+                  "updatedAt": "2026-07-28T20:00:00+09:00",
+                  "dataAccuracy": "actual"
+                },
+                {
+                  "lineId": "yamanote",
+                  "lineName": "山手線",
+                  "severity": "normal",
+                  "message": "平常どおり運転しています。",
+                  "updatedAt": "2026-07-28T20:00:00+09:00",
+                  "dataAccuracy": "actual"
+                }
+              ],
+              "isMock": false,
+              "source": "odpt",
+              "fallback": false,
+              "notice": null
+            }
+        """.trimIndent()
+
+        val LEGACY_SERVICE_STATUS_JSON = """
+            {
+              "serviceStatus": {
+                "lineName": "東海道線",
+                "severity": "normal",
+                "message": "平常運転",
                 "updatedAt": "2026-07-28T20:00:00+09:00",
                 "dataAccuracy": "actual"
               },

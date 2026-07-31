@@ -19,9 +19,9 @@ gh repo view shunsoco-stack/train-live-map-android --json nameWithOwner,visibili
 
 Web 版の型と API Route Handler は次のコミットで確認済みです。
 
-- short SHA: `7315203`
-- full SHA: `7315203af8057cd7094f858847affcd29770bb3a`
-- commit: [shunsoco-stack/train-live-map@7315203](https://github.com/shunsoco-stack/train-live-map/commit/7315203af8057cd7094f858847affcd29770bb3a)
+- short SHA: `1e49ce4`
+- full SHA: `1e49ce421b8a07a6c149042f8a385c48b0e55c54`
+- commit: [shunsoco-stack/train-live-map@1e49ce4](https://github.com/shunsoco-stack/train-live-map/commit/1e49ce421b8a07a6c149042f8a385c48b0e55c54)
 
 Web 版を追跡更新する場合も、Android の変更とは別 checkout / repository で行い、意図せず Web 版へ push しないでください。
 
@@ -78,6 +78,7 @@ Retrofit API   Preferences DataStore
 | `domain/geo` | haversine、polyline index、投影、fraction、clamp |
 | `domain/motion` | routeSegment 解決、方向付け、有限 transition |
 | `domain/railway` | 路線検索、表示、お気に入り filter |
+| `domain/service` | 公式運行情報の文脈分類、最新列車による遅延補完 |
 | `domain/train` | 状態 filter、顔、方向／状態文言、TalkBack |
 | `ui/map` | MapLibre style/layer、marker 投影、animation coordinator |
 | `ui/components` | Canvas 列車、header、data health、運行情報 |
@@ -126,16 +127,31 @@ routeSegment?
 ```text
 ServiceStatusApiResponse
 ├── serviceStatus
-│   ├── lineName
+│   ├── lineId, lineName
 │   ├── severity: "normal" | "minor" | "major"
 │   ├── message
 │   ├── updatedAt
 │   └── dataAccuracy
+├── serviceStatuses[]?（現行の全路線配列。旧キャッシュでは省略）
 ├── isMock
 ├── source
 ├── fallback
 └── notice
 ```
+
+### 運行情報補完の保守条件
+
+基準実装は Web 版 `src/lib/serviceStatus.ts` の `classifyServiceStatusSeverity` と `serviceStatusWithTrainDelayFallback` です。Android の対応実装は `domain/service/ServiceStatusPolicy.kt` にあり、15 分条件は受け入れ要件どおり「15 分以上の列車数」で判定します。
+
+1. API の `minor` / `major` は公式情報としてそのまま優先する。
+2. `normal` のときだけ、同じ `lineId` で最新 2 分以内の列車を対象にする。未来時刻は 30 秒まで許容する。
+3. `status == delayed` または `delayMinutes > 0` を遅延列車とする。
+4. 最大 30 分以上、または 15 分以上の遅延列車が対象列車の半数以上なら `major`、それ以外は `minor` とする。
+5. 補完後は `dataAccuracy = estimated`、`updatedAt` は遅延列車のうち最新の時刻とする。
+6. 遅延から運転見合わせを生成しない。`major` は大幅な遅延を表す場合もある。
+7. 再開済み表現と、再開予定・再開見込みなし・現在見合わせ中の表現を区別する。同じ文章では最後に現れる状態変化を採用し、再開後の残存支障は再開表現より後ろだけで判定する。ただし API から受け取った非平常 severity は端末側の文章分類で変更しない。
+
+`MainUiState.serviceStatus` と `serviceStatuses` は API / cache の原本、`effectiveServiceStatuses` と `effectiveServiceStatus` は画面用の導出値です。全路線を個別に補完した後、表示中の路線から最も重要な 1 件をパネルへ出します。原本を補完結果で置換すると、列車が古くなっても推定の `minor` / `major` が残り続けるため、この分離を崩さないでください。
 
 ### `GET /api/railways`
 

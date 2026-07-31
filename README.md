@@ -4,7 +4,7 @@
 
 - Android リポジトリ: [shunsoco-stack/train-live-map-android](https://github.com/shunsoco-stack/train-live-map-android)
 - 仕様確認元の Web 版: [shunsoco-stack/train-live-map](https://github.com/shunsoco-stack/train-live-map)
-- Web 版の確認コミット: [`7315203`](https://github.com/shunsoco-stack/train-live-map/commit/7315203af8057cd7094f858847affcd29770bb3a)
+- Web 版の確認コミット: [`1e49ce4`](https://github.com/shunsoco-stack/train-live-map/commit/1e49ce421b8a07a6c149042f8a385c48b0e55c54)
 
 Android のソースはこのリポジトリだけで管理します。Web 版および `baobao-privacy-policy` には追加しません。
 
@@ -150,19 +150,33 @@ $androidSdk = "C:\Android\Sdk"
 
 Android アプリは Vercel の既存バックエンドだけへ接続します。ODPT へ直接アクセスしてはいけません。`ODPT_ACCESS_TOKEN` は Android のソース、APK、`BuildConfig`、`local.properties`、Git 履歴のいずれにも入れません。ODPT の認証、mock、fallback は Web 版バックエンドの責務です。
 
-Android 側のモデルは Web 版コミット [`7315203`](https://github.com/shunsoco-stack/train-live-map/commit/7315203af8057cd7094f858847affcd29770bb3a) の `src/types/train.ts`、`src/types/railway.ts` と Route Handler を基準にしています。
+Android 側のモデルと運行情報補完は Web 版コミット [`1e49ce4`](https://github.com/shunsoco-stack/train-live-map/commit/1e49ce421b8a07a6c149042f8a385c48b0e55c54) の `src/types/train.ts`、`src/types/railway.ts`、`src/lib/serviceStatus.ts` と Route Handler を基準にしています。
 
 | Endpoint | 用途 | 主なレスポンス |
 | --- | --- | --- |
 | `GET /api/trains` | 列車位置 | `trains`, `generatedAt`, `dataUpdatedAt`, `isMock`, `source`, `fallback`, `notice` |
-| `GET /api/service-status` | 運行情報 | `serviceStatus`, `isMock`, `source`, `fallback`, `notice` |
+| `GET /api/service-status` | 運行情報 | `serviceStatus`, `serviceStatuses`, `isMock`, `source`, `fallback`, `notice` |
 | `GET /api/railways` | 地図線形と路線選択肢 | `lines`, `options`, `generatedAt`, `source` |
 
 `trains[]` は `id`, `lineId`, `lineName`, `lineColor`, `direction`, `destination`, `trainType`, `latitude`, `longitude`, `delayMinutes`, `speedKmh`, `status`, `lastUpdatedAt`, `stoppedSince`, `dataAccuracy`, `routeSegment` をデコードします。バックエンド契約に含まれる `trainNumber` もデコードしますが、プロダクト UI では使用しません。
 
 `routeSegment` は `fromFraction`, `toFraction`, 任意の `coordinates` を持ちます。GeoJSON と同じく座標配列は `[longitude, latitude]` 順です。
 
-`serviceStatus` は `lineName`, `severity`, `message`, `updatedAt`, `dataAccuracy` を持ちます。`lines` は地図用ポリライン、`options` は検索・選択用の `available`, `coverage`, `coverageNote`, `aliases`, `kind` を含みます。路線の利用可否と coverage は固定値ではなく、常に API 応答を尊重します。
+`serviceStatus` は `lineId`, `lineName`, `severity`, `message`, `updatedAt`, `dataAccuracy` を持ちます。`serviceStatuses` は現行 API の全路線向け配列で、旧 API と保存済みキャッシュでは省略可能です。`lines` は地図用ポリライン、`options` は検索・選択用の `available`, `coverage`, `coverageNote`, `aliases`, `kind` を含みます。路線の利用可否と coverage は固定値ではなく、常に API 応答を尊重します。
+
+### 運行情報の補完
+
+API の `minor` / `major` は公式情報として列車位置より優先します。公式状態が `normal` の場合だけ、同一路線かつ有効な `lastUpdatedAt` が最新 2 分以内の列車を使って表示状態を補完します。時計差対策として未来 30 秒までは許容し、それより古い・遠い未来・日時不正の列車は使いません。
+
+- `status == delayed` または `delayMinutes > 0` の列車があれば平常表示を取り消す
+- 最大 30 分以上、または 15 分以上遅れている列車が対象列車の半数以上なら `major`
+- それ以外の遅延は `minor`
+- 最大遅延分数を表示し、`major` では公式情報も確認するよう本文で案内する
+- 推定状態のフッターには常に「列車位置から推定・公式情報も確認」と表示する
+- 遅延だけから「運転見合わせ」とは断定しない
+- 「運転を再開しました」と「運転再開の見込み／予定」「現在も見合わせ中」を区別し、同じ文章では最後に現れる状態変化を現在状態として扱う
+
+API から受け取った `serviceStatus` / `serviceStatuses` は上書きせず、`MainUiState.effectiveServiceStatuses` で全路線を補完してから、表示路線のうち最も重要な 1 件を `effectiveServiceStatus` としてコンパクトなパネルへ表示します。このため、列車位置が 2 分を超えて古くなれば補完表示は公式の状態へ戻ります。
 
 開発時の疎通確認例:
 

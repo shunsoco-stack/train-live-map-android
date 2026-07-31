@@ -148,6 +148,31 @@ class MainViewModelPollingTest {
         }
 
     @Test
+    fun `returning to foreground updates the age clock synchronously`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            var nowMillis = 1_000L
+            val viewModel = MainViewModel(
+                repository = FakeTrainRepository(),
+                settingsStore = FakeSettingsStore(),
+                dispatcher = mainDispatcherRule.dispatcher,
+                clockMillis = { nowMillis },
+            )
+            runCurrent()
+
+            viewModel.setForeground(true)
+            assertEquals(1_000L, viewModel.state.value.nowMillis)
+            viewModel.setForeground(false)
+
+            nowMillis = 600_000L
+            viewModel.setForeground(true)
+
+            // No dispatcher turn is needed before stale train evidence expires.
+            assertEquals(600_000L, viewModel.state.value.nowMillis)
+            viewModel.setForeground(false)
+            runCurrent()
+        }
+
+    @Test
     fun `cached snapshot and stale state survive while polling is stopped`() =
         runTest(mainDispatcherRule.dispatcher) {
             val cachedResponse = sampleTrainsResponse(
@@ -246,6 +271,44 @@ class MainViewModelPollingTest {
                 "運行情報はフォールバックです",
                 viewModel.state.value.serviceNotice,
             )
+            viewModel.setForeground(false)
+        }
+
+    @Test
+    fun `service refresh retains all-line statuses from the API`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val allLineStatuses = listOf(
+                ServiceStatus(
+                    lineId = "tokaido",
+                    lineName = "東海道線",
+                    severity = ServiceSeverity.NORMAL,
+                    message = "平常運転",
+                    updatedAt = "2026-07-28T20:00:00+09:00",
+                    dataAccuracy = DataAccuracy.ACTUAL,
+                ),
+                ServiceStatus(
+                    lineId = "yamanote",
+                    lineName = "山手線",
+                    severity = ServiceSeverity.MINOR,
+                    message = "一部列車に遅れがでています。",
+                    updatedAt = "2026-07-28T20:00:10+09:00",
+                    dataAccuracy = DataAccuracy.ACTUAL,
+                ),
+            )
+            val repository = FakeTrainRepository().apply {
+                serviceResults += LoadResult(
+                    data = sampleServiceStatusResponse(serviceStatuses = allLineStatuses),
+                    fromCache = false,
+                    error = null,
+                )
+            }
+            val viewModel = createViewModel(repository)
+            runCurrent()
+
+            viewModel.setForeground(true)
+            runCurrent()
+
+            assertEquals(allLineStatuses, viewModel.state.value.serviceStatuses)
             viewModel.setForeground(false)
         }
 
@@ -365,6 +428,7 @@ class MainViewModelPollingTest {
             isMock: Boolean = false,
             fallback: Boolean = false,
             notice: String? = null,
+            serviceStatuses: List<ServiceStatus>? = null,
         ) = ServiceStatusApiResponse(
             serviceStatus = ServiceStatus(
                 lineName = "東海道線",
@@ -373,6 +437,7 @@ class MainViewModelPollingTest {
                 updatedAt = "2026-07-28T20:00:00+09:00",
                 dataAccuracy = if (isMock) DataAccuracy.MOCK else DataAccuracy.ACTUAL,
             ),
+            serviceStatuses = serviceStatuses,
             isMock = isMock,
             source = if (isMock) ProviderSource.MOCK else ProviderSource.ODPT,
             fallback = fallback,

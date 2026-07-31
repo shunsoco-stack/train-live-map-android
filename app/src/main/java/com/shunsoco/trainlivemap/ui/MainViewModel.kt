@@ -9,10 +9,12 @@ import com.shunsoco.trainlivemap.data.model.ProviderSource
 import com.shunsoco.trainlivemap.data.model.RailwayFilterOption
 import com.shunsoco.trainlivemap.data.model.RailwayMapLine
 import com.shunsoco.trainlivemap.data.model.RailwaySource
+import com.shunsoco.trainlivemap.data.model.ServiceSeverity
 import com.shunsoco.trainlivemap.data.model.ServiceStatus
 import com.shunsoco.trainlivemap.data.model.TrainLocation
 import com.shunsoco.trainlivemap.data.repository.LoadResult
 import com.shunsoco.trainlivemap.data.repository.TrainRepository
+import com.shunsoco.trainlivemap.domain.service.serviceStatusWithTrainDelayFallback
 import com.shunsoco.trainlivemap.domain.train.TrainStatusFilter
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -35,6 +37,7 @@ data class MainUiState(
     val railwayLines: List<RailwayMapLine> = emptyList(),
     val railwayOptions: List<RailwayFilterOption> = emptyList(),
     val serviceStatus: ServiceStatus? = null,
+    val serviceStatuses: List<ServiceStatus> = emptyList(),
     val preferences: UserPreferences = UserPreferences(),
     val statusFilter: TrainStatusFilter = TrainStatusFilter.ALL,
     val selectedTrainId: String? = null,
@@ -64,6 +67,56 @@ data class MainUiState(
 ) {
     val selectedTrain: TrainLocation?
         get() = trains.firstOrNull { it.id == selectedTrainId }
+
+    /**
+     * Keep the API status untouched and derive only what is rendered. This
+     * lets the estimate disappear as soon as its train snapshot becomes old.
+     */
+    val effectiveServiceStatuses: List<ServiceStatus>
+        get() = serviceStatuses
+            .ifEmpty { listOfNotNull(serviceStatus) }
+            .map { officialStatus ->
+            serviceStatusWithTrainDelayFallback(
+                serviceStatus = officialStatus,
+                trains = trains,
+                nowMillis = nowMillis,
+            )
+        }
+
+    /**
+     * The compact map UI renders the most important status for the lines the
+     * user currently displays. The full API array is still retained and every
+     * line receives its own train-delay fallback before this selection.
+     */
+    val effectiveServiceStatus: ServiceStatus?
+        get() {
+            val allStatuses = effectiveServiceStatuses
+            if (allStatuses.isEmpty()) return null
+
+            val displayedLineIds = if (preferences.visibleLineIdsInitialized) {
+                if (preferences.favoritesOnly) {
+                    preferences.visibleLineIds intersect preferences.favoriteLineIds
+                } else {
+                    preferences.visibleLineIds
+                }
+            } else {
+                null
+            }
+            val visibleStatuses = displayedLineIds?.let { lineIds ->
+                allStatuses.filter { status -> status.lineId in lineIds }
+            }
+            if (visibleStatuses != null) {
+                return visibleStatuses.maxByOrNull { status -> status.severity.displayPriority }
+            }
+
+            val compatibilityStatuses = serviceStatus?.lineId?.let { lineId ->
+                allStatuses.filter { status -> status.lineId == lineId }
+            }.orEmpty()
+            val candidates = compatibilityStatuses
+                .ifEmpty { allStatuses }
+
+            return candidates.maxByOrNull { status -> status.severity.displayPriority }
+        }
 
     val isOffline: Boolean
         get() = trainFromCache ||
@@ -116,9 +169,11 @@ class MainViewModel(
      */
     fun setForeground(foreground: Boolean) {
         if (mutableState.value.isForeground == foreground) return
+        val foregroundNowMillis = if (foreground) clockMillis() else null
         mutableState.update {
             it.copy(
                 isForeground = foreground,
+                nowMillis = foregroundNowMillis ?: it.nowMillis,
                 nextTrainRefreshAtMillis = if (foreground) it.nextTrainRefreshAtMillis else null,
             )
         }
@@ -244,12 +299,19 @@ class MainViewModel(
 
     internal suspend fun refreshServiceStatusNow() {
         serviceRefreshMutex.withLock {
-            mutableState.update { it.copy(serviceLoading = it.serviceStatus == null) }
+            mutableState.update {
+                it.copy(serviceLoading = it.serviceStatus == null && it.serviceStatuses.isEmpty())
+            }
             val result = repository.refreshServiceStatus()
             mutableState.update { previous ->
                 val response = result.data
                 previous.copy(
                     serviceStatus = response?.serviceStatus ?: previous.serviceStatus,
+                    serviceStatuses = if (response != null) {
+                        response.serviceStatuses.orEmpty().ifEmpty { listOf(response.serviceStatus) }
+                    } else {
+                        previous.serviceStatuses
+                    },
                     serviceLoading = false,
                     serviceFromCache = result.fromCache,
                     serviceError = result.userFacingError("運行情報の更新に失敗しました"),
@@ -335,3 +397,10 @@ private fun String?.isOlderThan(
 }
 
 private const val STALE_AFTER_MILLIS = 90_000L
+
+private val ServiceSeverity.displayPriority: Int
+    get() = when (this) {
+        ServiceSeverity.NORMAL -> 0
+        ServiceSeverity.MINOR -> 1
+        ServiceSeverity.MAJOR -> 2
+    }

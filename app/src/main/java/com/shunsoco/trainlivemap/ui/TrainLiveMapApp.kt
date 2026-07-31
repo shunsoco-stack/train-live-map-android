@@ -129,7 +129,7 @@ fun TrainLiveMapApp(
                 )
                 DataHealthNotice(state = state, onRetry = onRetry)
                 ServiceStatusPanel(
-                    serviceStatus = state.serviceStatus,
+                    serviceStatus = state.effectiveServiceStatus,
                     fromCache = state.serviceFromCache,
                     isMock = state.serviceIsMock,
                     fallback = state.serviceFallback,
