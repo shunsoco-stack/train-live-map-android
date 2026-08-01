@@ -31,6 +31,7 @@ class MainActivity : ComponentActivity() {
         val factory = MainViewModelFactory(
             repository = container.repository,
             settingsStore = container.settingsStore,
+            communityReportRepository = container.communityReportRepository,
         )
 
         setContent {
@@ -64,10 +65,13 @@ class MainActivity : ComponentActivity() {
                     onRetry = mainViewModel::retryAll,
                     onStatusFilterChanged = mainViewModel::setStatusFilter,
                     onTrainSelected = mainViewModel::selectTrain,
+                    onTrainSelectedFromSearch = mainViewModel::selectTrainFromSearch,
                     onVisibleChanged = mainViewModel::setVisible,
                     onFavoriteChanged = mainViewModel::setFavorite,
                     onFavoritesOnlyChanged = mainViewModel::setFavoritesOnly,
                     onVisibleLinesChanged = mainViewModel::setVisibleLines,
+                    onCommunityReportsRequested = mainViewModel::loadCommunityReports,
+                    onCommunityReportSubmitted = mainViewModel::submitCommunityReport,
                 )
             }
         }

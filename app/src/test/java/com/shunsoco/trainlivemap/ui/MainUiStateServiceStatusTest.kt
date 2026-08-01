@@ -19,6 +19,9 @@ class MainUiStateServiceStatusTest {
         val state = MainUiState(
             trains = listOf(train(delayMinutes = 8)),
             serviceStatus = officialStatus(),
+            preferences = visiblePreferences("tokaido"),
+            trainResponseLineQuery = "tokaido",
+            serviceResponseLineQuery = "tokaido",
             nowMillis = NOW_MILLIS,
         )
 
@@ -73,6 +76,8 @@ class MainUiStateServiceStatusTest {
                 visibleLineIds = setOf("yamanote"),
                 visibleLineIdsInitialized = true,
             ),
+            trainResponseLineQuery = "yamanote",
+            serviceResponseLineQuery = "yamanote",
             nowMillis = NOW_MILLIS,
         )
 
@@ -112,6 +117,7 @@ class MainUiStateServiceStatusTest {
                 favoritesOnly = true,
                 visibleLineIdsInitialized = true,
             ),
+            serviceResponseLineQuery = "yamanote",
         )
 
         assertEquals("yamanote", state.effectiveServiceStatus?.lineId)
@@ -127,6 +133,11 @@ class MainUiStateServiceStatusTest {
         message = "平常どおり運転しています。",
         updatedAt = "2026-07-31T08:44:00Z",
         dataAccuracy = DataAccuracy.ACTUAL,
+    )
+
+    private fun visiblePreferences(lineId: String) = UserPreferences(
+        visibleLineIds = setOf(lineId),
+        visibleLineIdsInitialized = true,
     )
 
     private fun train(

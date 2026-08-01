@@ -41,7 +41,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -288,7 +290,16 @@ private fun RailwayOptionRow(
                 checked = visible,
                 enabled = option.available,
                 onCheckedChange = { onVisibleChanged(option.id, it) },
-                modifier = Modifier.testTag("route_toggle_${option.id}"),
+                modifier = Modifier
+                    .testTag("route_toggle_${option.id}")
+                    .semantics {
+                        contentDescription = "${option.name}を地図に表示"
+                        stateDescription = when {
+                            !option.available -> "利用不可"
+                            visible -> "表示中"
+                            else -> "非表示"
+                        }
+                    },
             )
             IconButton(
                 onClick = { onFavoriteChanged(option.id, !favorite) },
@@ -296,6 +307,8 @@ private fun RailwayOptionRow(
                     .size(48.dp)
                     .testTag("favorite_${option.id}")
                     .semantics {
+                        selected = favorite
+                        stateDescription = if (favorite) "お気に入り登録済み" else "未登録"
                         contentDescription = if (favorite) {
                             "${option.name}をお気に入りから解除"
                         } else {

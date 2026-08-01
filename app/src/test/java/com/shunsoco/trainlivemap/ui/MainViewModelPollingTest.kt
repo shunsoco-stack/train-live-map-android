@@ -16,6 +16,7 @@ import com.shunsoco.trainlivemap.data.model.TrainType
 import com.shunsoco.trainlivemap.data.model.TrainsApiResponse
 import com.shunsoco.trainlivemap.data.repository.LoadResult
 import com.shunsoco.trainlivemap.data.repository.TrainRepository
+import com.shunsoco.trainlivemap.data.remote.ApiFailure
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,7 +46,7 @@ class MainViewModelPollingTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     @Test
-    fun `trains refresh immediately and then every seven seconds`() =
+    fun `trains refresh immediately and then every ten seconds`() =
         runTest(mainDispatcherRule.dispatcher) {
             val repository = FakeTrainRepository()
             val viewModel = createViewModel(repository)
@@ -72,7 +73,7 @@ class MainViewModelPollingTest {
         }
 
     @Test
-    fun `service status refreshes immediately and then every thirty seconds`() =
+    fun `service status refreshes immediately and then every ten seconds`() =
         runTest(mainDispatcherRule.dispatcher) {
             val repository = FakeTrainRepository()
             val viewModel = createViewModel(repository)
@@ -195,6 +196,7 @@ class MainViewModelPollingTest {
             runCurrent()
 
             assertEquals(cachedResponse.trains, viewModel.state.value.trains)
+            assertTrue(viewModel.state.value.currentTrains.isEmpty())
             assertTrue(viewModel.state.value.trainFromCache)
             assertTrue(viewModel.state.value.isOffline)
             assertTrue(viewModel.state.value.isStale)
@@ -211,6 +213,85 @@ class MainViewModelPollingTest {
             assertEquals(cachedResponse.trains, viewModel.state.value.trains)
             assertTrue(viewModel.state.value.trainFromCache)
             assertNotNull(viewModel.state.value.trainError)
+        }
+
+    @Test
+    fun `selected line IDs are sent to both scoped endpoints`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val repository = FakeTrainRepository()
+            val preferences = UserPreferences(
+                visibleLineIds = linkedSetOf("yamanote", "tokaido"),
+                visibleLineIdsInitialized = true,
+            )
+            val viewModel = MainViewModel(
+                repository = repository,
+                settingsStore = FakeSettingsStore(preferences),
+                dispatcher = mainDispatcherRule.dispatcher,
+                clockMillis = { testScheduler.currentTime },
+            )
+            runCurrent()
+
+            viewModel.setForeground(true)
+            runCurrent()
+
+            assertEquals(setOf("tokaido", "yamanote"), repository.trainLineQueries.single())
+            assertEquals(setOf("tokaido", "yamanote"), repository.serviceLineQueries.single())
+            assertEquals("tokaido,yamanote", viewModel.state.value.trainResponseLineQuery)
+            viewModel.setForeground(false)
+        }
+
+    @Test
+    fun `HTTP 400 stops automatic retries until manual retry or query change`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val error = IOException("bad request")
+            val repository = FakeTrainRepository().apply {
+                trainResults += LoadResult(
+                    data = null,
+                    fromCache = false,
+                    error = error,
+                    apiFailure = ApiFailure.BadRequest(error),
+                )
+            }
+            val viewModel = createViewModel(repository)
+            runCurrent()
+
+            viewModel.setForeground(true)
+            runCurrent()
+            advanceTimeBy(MainViewModel.TRAIN_POLLING_MILLIS * 3)
+            runCurrent()
+            assertEquals(1, repository.trainRefreshCount)
+
+            viewModel.retryAll()
+            runCurrent()
+            assertEquals(2, repository.trainRefreshCount)
+            viewModel.setForeground(false)
+        }
+
+    @Test
+    fun `HTTP 429 respects Retry-After without polling the endpoint`() =
+        runTest(mainDispatcherRule.dispatcher) {
+            val error = IOException("rate limited")
+            val repository = FakeTrainRepository().apply {
+                trainResults += LoadResult(
+                    data = null,
+                    fromCache = false,
+                    error = error,
+                    apiFailure = ApiFailure.RateLimited(error, retryAfterMillis = 25_000L),
+                )
+            }
+            val viewModel = createViewModel(repository)
+            runCurrent()
+
+            viewModel.setForeground(true)
+            runCurrent()
+            advanceTimeBy(20_000L)
+            runCurrent()
+            assertEquals(1, repository.trainRefreshCount)
+
+            advanceTimeBy(10_000L)
+            runCurrent()
+            assertEquals(2, repository.trainRefreshCount)
+            viewModel.setForeground(false)
         }
 
     @Test
@@ -346,6 +427,8 @@ class MainViewModelPollingTest {
         var trainRefreshCount = 0
         var serviceRefreshCount = 0
         var railwayRefreshCount = 0
+        val trainLineQueries = mutableListOf<Set<String>>()
+        val serviceLineQueries = mutableListOf<Set<String>>()
 
         override suspend fun refreshTrains(): LoadResult<TrainsApiResponse> {
             trainRefreshCount += 1
@@ -360,6 +443,13 @@ class MainViewModelPollingTest {
             }
         }
 
+        override suspend fun refreshTrains(
+            lineIds: Set<String>,
+        ): LoadResult<TrainsApiResponse> {
+            trainLineQueries += lineIds
+            return refreshTrains()
+        }
+
         override suspend fun refreshServiceStatus(): LoadResult<ServiceStatusApiResponse> {
             serviceRefreshCount += 1
             return if (serviceResults.isNotEmpty()) {
@@ -371,6 +461,13 @@ class MainViewModelPollingTest {
                     error = null,
                 )
             }
+        }
+
+        override suspend fun refreshServiceStatus(
+            lineIds: Set<String>,
+        ): LoadResult<ServiceStatusApiResponse> {
+            serviceLineQueries += lineIds
+            return refreshServiceStatus()
         }
 
         override suspend fun refreshRailways(): LoadResult<RailwaysApiResponse> {

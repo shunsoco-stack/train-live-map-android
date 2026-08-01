@@ -21,6 +21,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,6 +48,8 @@ import com.shunsoco.trainlivemap.ui.theme.RailBrown
 import com.shunsoco.trainlivemap.ui.theme.RailCream
 import com.shunsoco.trainlivemap.ui.theme.RailMuted
 import com.shunsoco.trainlivemap.ui.theme.TokaidoOrange
+import kotlin.math.ceil
+import kotlinx.coroutines.delay
 
 @Composable
 fun AppHeader(
@@ -52,6 +59,7 @@ fun AppHeader(
     onRefresh: () -> Unit,
     onPrivacyOptions: () -> Unit,
 ) {
+    val refreshing = state.trainsLoading || state.serviceLoading || state.railwaysLoading
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = RailBrown.copy(alpha = 0.97f),
@@ -87,16 +95,13 @@ fun AppHeader(
                 }
                 IconButton(
                     onClick = onRefresh,
+                    enabled = !refreshing,
                     modifier = Modifier
                         .size(48.dp)
                         .semantics { contentDescription = "データを再取得" },
                 ) {
                     Text(
-                        text = if (
-                            state.trainsLoading ||
-                            state.serviceLoading ||
-                            state.railwaysLoading
-                        ) {
+                        text = if (refreshing) {
                             "…"
                         } else {
                             "↻"
@@ -131,13 +136,7 @@ fun AppHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                state.nextRefreshSeconds?.let { seconds ->
-                    Text(
-                        text = "次回 ${seconds}秒",
-                        color = RailMuted,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
+                NextRefreshCountdown(state.nextTrainRefreshAtMillis)
             }
             Text(
                 text = "列車位置は駅間情報などからの位置推定を含みます",
@@ -221,6 +220,7 @@ fun DataHealthNotice(
             }
             TextButton(
                 onClick = onRetry,
+                enabled = !state.trainsLoading && !state.serviceLoading && !state.railwaysLoading,
                 colors = ButtonDefaults.textButtonColors(contentColor = Color.White),
             ) {
                 Text("再試行", fontWeight = FontWeight.Bold)
@@ -303,11 +303,16 @@ fun TrainStatusFilterBar(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         TrainStatusFilter.entries.forEach { filter ->
+            val count = counts[filter] ?: 0
             FilterChip(
                 selected = selected == filter,
                 onClick = { onSelected(filter) },
+                enabled = count > 0,
+                modifier = Modifier.semantics {
+                    contentDescription = "${filter.labelJa}、${count}件"
+                },
                 label = {
-                    Text("${filter.labelJa} ${counts[filter] ?: 0}")
+                    Text("${filter.labelJa} $count")
                 },
             )
         }
@@ -356,4 +361,24 @@ private fun sourceLabel(state: MainUiState): String = when {
     state.isMock -> "取得元: モック"
     state.trainSource == ProviderSource.ODPT -> "取得元: ODPT API"
     else -> "取得元: 確認中"
+}
+
+@Composable
+private fun NextRefreshCountdown(refreshAtMillis: Long?) {
+    refreshAtMillis ?: return
+    var nowMillis by remember(refreshAtMillis) {
+        mutableLongStateOf(System.currentTimeMillis())
+    }
+    LaunchedEffect(refreshAtMillis) {
+        while (nowMillis < refreshAtMillis) {
+            delay(1_000L)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    val seconds = ceil((refreshAtMillis - nowMillis).coerceAtLeast(0L) / 1_000.0).toInt()
+    Text(
+        text = "次回 ${seconds}秒",
+        color = RailMuted,
+        style = MaterialTheme.typography.labelMedium,
+    )
 }

@@ -10,22 +10,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
-import com.shunsoco.trainlivemap.data.model.DataAccuracy
 import com.shunsoco.trainlivemap.data.model.TrainLocation
 import com.shunsoco.trainlivemap.data.model.TrainStatus
 import com.shunsoco.trainlivemap.domain.train.dataAccuracyLabelJa
@@ -74,29 +74,24 @@ fun TrainDetailSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(statusLabelJa(train.status)) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = lineColor,
-                        labelColor = if (lineColor.luminance() >= 0.42f) {
+                Surface(
+                    modifier = Modifier.semantics {
+                        contentDescription = "状態、${statusLabelJa(train.status)}"
+                    },
+                    color = lineColor,
+                    shape = CircleShape,
+                ) {
+                    Text(
+                        text = statusLabelJa(train.status),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        color = if (lineColor.luminance() >= 0.42f) {
                             Color(0xFF24130D)
                         } else {
                             Color.White
                         },
-                    ),
-                    shape = CircleShape,
-                )
-            }
-
-            if (train.dataAccuracy != DataAccuracy.ACTUAL) {
-                Text(
-                    text = "この列車位置は駅間情報などに基づく位置推定です。",
-                    modifier = Modifier.padding(top = 12.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -114,6 +109,12 @@ fun TrainDetailSheet(
             DetailRow("最終更新", formatTimestamp(train.lastUpdatedAt))
             DetailRow("データ精度", dataAccuracyLabelJa(train.dataAccuracy))
             stoppedDuration(train, nowMillis)?.let { DetailRow("停車時間", it) }
+            Text(
+                text = "※ アイコンの位置と動きはGPS実測ではなく、駅間情報をもとにした推定です。実際の列車位置とは異なる場合があります。",
+                modifier = Modifier.padding(top = 14.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

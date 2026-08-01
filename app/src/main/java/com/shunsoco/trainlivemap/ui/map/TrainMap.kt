@@ -11,12 +11,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -30,6 +33,7 @@ import com.shunsoco.trainlivemap.ui.components.TrainMarker
 import java.util.Locale
 import kotlinx.coroutines.delay
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
@@ -50,6 +54,12 @@ private data class ProjectedTrain(
     val train: TrainLocation,
     val x: Float,
     val y: Float,
+)
+
+data class MapCameraRequest(
+    val coordinate: LngLat,
+    val zoom: Double,
+    val requestId: Long,
 )
 
 private class MapHolder {
@@ -149,12 +159,15 @@ fun TrainMap(
     animationsActive: Boolean,
     onTrainSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    cameraRequest: MapCameraRequest? = null,
 ) {
     val holder = remember { MapHolder() }
     val motion = remember { TrainMotionCoordinator() }
-    var viewportWidth by remember { mutableStateOf(0) }
-    var viewportHeight by remember { mutableStateOf(0) }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    var viewportHeight by remember { mutableIntStateOf(0) }
     var projectedTrains by remember { mutableStateOf(emptyList<ProjectedTrain>()) }
+    var focusedTrainId by remember { mutableStateOf<String?>(null) }
+    var focusedMap by remember { mutableStateOf<MapLibreMap?>(null) }
     val trainsById = remember(trains) { trains.associateBy(TrainLocation::id) }
     val density = LocalDensity.current
     val markerCenterX = with(density) { 36.dp.toPx() }
@@ -200,6 +213,40 @@ fun TrainMap(
         )
     }
 
+    LaunchedEffect(holder.map, selectedTrainId, trainsById) {
+        val map = holder.map ?: return@LaunchedEffect
+        if (map !== focusedMap) {
+            focusedMap = map
+            focusedTrainId = null
+        }
+        if (selectedTrainId == null) {
+            focusedTrainId = null
+            return@LaunchedEffect
+        }
+        if (selectedTrainId == focusedTrainId) return@LaunchedEffect
+        val train = trainsById[selectedTrainId] ?: return@LaunchedEffect
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                LatLng(train.latitude, train.longitude),
+                maxOf(map.cameraPosition.zoom, 12.0),
+            ),
+            500,
+        )
+        focusedTrainId = selectedTrainId
+    }
+
+    LaunchedEffect(holder.map, cameraRequest) {
+        val map = holder.map ?: return@LaunchedEffect
+        val request = cameraRequest ?: return@LaunchedEffect
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                LatLng(request.coordinate.latitude, request.coordinate.longitude),
+                request.zoom,
+            ),
+            500,
+        )
+    }
+
     LaunchedEffect(
         holder.map,
         animationsActive,
@@ -208,7 +255,12 @@ fun TrainMap(
         viewportHeight,
         markerMargin,
     ) {
-        if (!animationsActive) return@LaunchedEffect
+        if (!animationsActive || trainsById.isEmpty()) {
+            // A previously projected frame must not survive a transition to
+            // offline/cached data and look like a current train position.
+            projectedTrains = emptyList()
+            return@LaunchedEffect
+        }
         while (true) {
             val map = holder.map
             if (map != null && viewportWidth > 0 && viewportHeight > 0) {
@@ -246,7 +298,12 @@ fun TrainMap(
     ) {
         AndroidView(
             factory = { mapView },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .semantics {
+                    contentDescription =
+                        "列車と路線の地図。列車位置は駅間情報をもとにした推定です"
+                },
         )
 
         for (projected in projectedTrains) {

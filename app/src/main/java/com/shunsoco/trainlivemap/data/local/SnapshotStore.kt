@@ -1,12 +1,13 @@
 package com.shunsoco.trainlivemap.data.local
 
 /**
- * Raw successful response snapshots.
+ * Serialized successful response snapshots.
  *
- * Keeping JSON rather than a second set of cache entities makes the persisted
- * schema identical to the backend contract. It also lets the same configured
- * kotlinx.serialization [kotlinx.serialization.json.Json] instance decode
- * network and cached data.
+ * Railway JSON remains the backend payload. Train and service-status JSON is
+ * wrapped by the repository with its normalized `lines` query so a snapshot
+ * can never be returned for a different selection. The same configured
+ * kotlinx.serialization [kotlinx.serialization.json.Json] instance decodes
+ * both the envelope and payload.
  */
 interface SnapshotStore {
     suspend fun readTrainsJson(): String?

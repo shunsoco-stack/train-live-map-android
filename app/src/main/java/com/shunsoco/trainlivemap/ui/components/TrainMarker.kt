@@ -22,9 +22,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
+import com.shunsoco.trainlivemap.data.model.DataAccuracy
 import com.shunsoco.trainlivemap.data.model.TrainDirection
 import com.shunsoco.trainlivemap.data.model.TrainLocation
 import com.shunsoco.trainlivemap.data.model.TrainStatus
@@ -64,7 +67,13 @@ fun TrainMarker(
                 shadowElevation = if (selected) 12.dp.toPx() else 5.dp.toPx()
             }
             .semantics(mergeDescendants = true) {
-                contentDescription = trainContentDescription(train)
+                contentDescription = trainContentDescription(train) + when (train.dataAccuracy) {
+                    DataAccuracy.ACTUAL -> "、位置推定、取得情報"
+                    DataAccuracy.ESTIMATED -> "、位置推定"
+                    DataAccuracy.MOCK -> "、モック位置"
+                }
+                this.selected = selected
+                stateDescription = if (selected) "選択中" else "未選択"
                 role = Role.Button
             }
             .clickable(

@@ -53,7 +53,7 @@ fun trainTypeLabelJa(trainType: TrainType): String = when (trainType) {
 }
 
 fun dataAccuracyLabelJa(dataAccuracy: DataAccuracy): String = when (dataAccuracy) {
-    DataAccuracy.ACTUAL -> "実測"
+    DataAccuracy.ACTUAL -> "取得情報（位置は推定）"
     DataAccuracy.ESTIMATED -> "位置推定"
     DataAccuracy.MOCK -> "モック"
 }

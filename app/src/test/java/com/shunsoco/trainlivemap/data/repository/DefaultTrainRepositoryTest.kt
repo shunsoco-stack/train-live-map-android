@@ -20,6 +20,7 @@ import com.shunsoco.trainlivemap.data.model.TrainStatus
 import com.shunsoco.trainlivemap.data.model.TrainType
 import com.shunsoco.trainlivemap.data.model.TrainsApiResponse
 import com.shunsoco.trainlivemap.data.remote.ApiClientFactory
+import com.shunsoco.trainlivemap.data.remote.ApiFailure
 import com.shunsoco.trainlivemap.data.remote.TrainRemoteDataSource
 import java.io.IOException
 import kotlinx.coroutines.test.runTest
@@ -50,16 +51,24 @@ class DefaultTrainRepositoryTest {
         assertNotNull(cache.serviceStatusJson)
         assertNotNull(cache.railwaysJson)
 
+        val trainsSnapshot = ApiClientFactory.json.decodeFromString<ScopedSnapshot>(
+            requireNotNull(cache.trainsJson),
+        )
+        val statusSnapshot = ApiClientFactory.json.decodeFromString<ScopedSnapshot>(
+            requireNotNull(cache.serviceStatusJson),
+        )
+        assertNull(trainsSnapshot.linesQuery)
+        assertNull(statusSnapshot.linesQuery)
         assertEquals(
             remote.trainsResponse,
             ApiClientFactory.json.decodeFromString<TrainsApiResponse>(
-                requireNotNull(cache.trainsJson),
+                trainsSnapshot.payload,
             ),
         )
         assertEquals(
             remote.statusResponse,
             ApiClientFactory.json.decodeFromString<ServiceStatusApiResponse>(
-                requireNotNull(cache.serviceStatusJson),
+                statusSnapshot.payload,
             ),
         )
         assertEquals(
@@ -97,7 +106,62 @@ class DefaultTrainRepositoryTest {
         assertEquals(remote.railwaysResponse, railways.data)
         assertTrue(requireNotNull(trains.data).isMock)
         assertTrue(requireNotNull(trains.data).fallback)
-        assertEquals("モックへフォールバック", trains.data?.notice)
+        assertEquals("モックへフォールバック", trains.data.notice)
+        assertTrue(trains.apiFailure is ApiFailure.Network)
+    }
+
+    @Test
+    fun `scoped cache is reused only for the same normalized line query`() = runTest {
+        val remote = FakeRemoteDataSource()
+        val cache = MemorySnapshotStore()
+        val repository = DefaultTrainRepository(remote, cache)
+        val selected = linkedSetOf(" yamanote ", "tokaido", "tokaido")
+
+        repository.refreshTrains(selected)
+        repository.refreshServiceStatus(selected)
+        val trainSnapshot = ApiClientFactory.json.decodeFromString<ScopedSnapshot>(
+            requireNotNull(cache.trainsJson),
+        )
+        val statusSnapshot = ApiClientFactory.json.decodeFromString<ScopedSnapshot>(
+            requireNotNull(cache.serviceStatusJson),
+        )
+        assertEquals("tokaido,yamanote", trainSnapshot.linesQuery)
+        assertEquals("tokaido,yamanote", statusSnapshot.linesQuery)
+
+        remote.failure = IOException("offline")
+        assertTrue(
+            repository.refreshTrains(linkedSetOf("tokaido", "yamanote")).fromCache,
+        )
+        assertTrue(
+            repository.refreshServiceStatus(
+                linkedSetOf("tokaido", "yamanote"),
+            ).fromCache,
+        )
+
+        val mismatched = repository.refreshTrains(setOf("joban"))
+        assertNull(mismatched.data)
+        assertFalse(mismatched.fromCache)
+    }
+
+    @Test
+    fun `explicit empty line scope never receives legacy unscoped cache`() = runTest {
+        val failure = IOException("offline")
+        val remote = FakeRemoteDataSource().apply { this.failure = failure }
+        val cache = MemorySnapshotStore().apply {
+            trainsJson = ApiClientFactory.json.encodeToString(
+                TrainsApiResponse.serializer(),
+                sampleTrainsResponse(),
+            )
+        }
+        val repository = DefaultTrainRepository(remote, cache)
+
+        val explicitlyEmpty = repository.refreshTrains(emptySet())
+        assertNull(explicitlyEmpty.data)
+        assertFalse(explicitlyEmpty.fromCache)
+
+        val compatibilityRequest = repository.refreshTrains()
+        assertEquals(sampleTrainsResponse(), compatibilityRequest.data)
+        assertTrue(compatibilityRequest.fromCache)
     }
 
     @Test
@@ -128,10 +192,17 @@ class DefaultTrainRepositoryTest {
             return trainsResponse
         }
 
+        override suspend fun fetchTrains(lineIds: Set<String>): TrainsApiResponse =
+            fetchTrains()
+
         override suspend fun fetchServiceStatus(): ServiceStatusApiResponse {
             failure?.let { throw it }
             return statusResponse
         }
+
+        override suspend fun fetchServiceStatus(
+            lineIds: Set<String>,
+        ): ServiceStatusApiResponse = fetchServiceStatus()
 
         override suspend fun fetchRailways(): RailwaysApiResponse {
             failure?.let { throw it }
